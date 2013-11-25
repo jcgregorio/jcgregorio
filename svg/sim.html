@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      p { font-size: 20px; }
+    </style>
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript">
+      google.load('visualization', '1', {packages: ['corechart']});
+    </script>
+  </head>
+
+  <body >
+
+    <svg id="stage" width="200" height="200" onload='Init(evt)' style="border: solid black 1px;">
+    </svg>
+
+
+    <script type="text/javascript" charset="utf-8">
+
+      var NUM_CIRCLES = 400;
+      var RADIUS = 3;
+      var circles = [];
+      var lastNumInfected = 1;
+      var steps = 0;
+      var samples = [];
+
+      // Returns the bounding box of the element transformed according to the
+      // elements CTM.
+      function getTranslatedBBox(ele) {
+        var owner = ele.ownerSVGElement;
+        var retval = owner.createSVGRect();
+        var svgP = owner.createSVGPoint();
+
+        var r = ele.getBBox();
+        var m = ele.getCTM();
+        retval.height = r.height;
+        retval.width = r.width;
+
+        svgP.x = r.x;
+        svgP.y = r.y;
+        var newPt = svgP.matrixTransform(m);
+        retval.x = newPt.x;
+        retval.y = newPt.y;
+
+        return retval;
+      }
+
+      // Returns the elements that this ele has hit, not inlcluding itself.
+      function hitTest(ele) {
+        var owner = ele.ownerSVGElement;
+        var intersectRect = getTranslatedBBox(ele);
+        var list = owner.getIntersectionList(intersectRect);
+
+        // Remember to remove ourselves when checking for intersections.
+        var notme = [];
+        for (var i=0; i<list.length; i++) {
+          if (list[i] != ele) {
+             notme[notme.length] = list[i];
+          }
+        }
+
+        return notme;
+      }
+
+      // Move an individual circle.
+      function mvCircle(circle) {
+        var newx = circle.cx.baseVal.value + Math.floor(Math.random()*7-3);
+        var newy = circle.cy.baseVal.value + Math.floor(Math.random()*7-3);
+        if (newx > 200) { newx = 0; }
+        if (newy > 200) { newy = 0; }
+        if (newx < 0) { newx = 200; }
+        if (newy < 0) { newy = 200; }
+        circle.setAttribute('cx', newx);
+        circle.setAttribute('cy', newy);
+        if (circle.getAttribute("fill") == "red") {
+          var hits = hitTest(circle);
+          for (var i=0; i<hits.length; i++) {
+            if (hits[i].getAttribute("fill") != "red") {
+              hits[i].setAttribute("fill", "red");
+            }
+          }
+        }
+      }
+
+    function drawVisualization() {
+      // Create and populate the data table.
+      var data = new google.visualization.DataTable();
+      data.addColumn('number', 'Time');
+      data.addColumn('number', 'Infected');
+      for (var i = 0; i < samples.length; ++i) {
+        data.addRow([samples[i][0], samples[i][1]])
+      }
+      // Create and draw the visualization.
+      var chart = new google.visualization.ScatterChart(
+          document.getElementById('visualization'));
+      chart.draw(data, {title: 'Infection',
+          width: 600, height: 400,
+          vAxis: {title: "Infected", titleTextStyle: {color: "green"}},
+          hAxis: {title: "Time", titleTextStyle: {color: "green"}}}
+          );
+    }
+
+
+
+      function updateStats() {
+        var numInfected = 0;
+
+        steps += 1;
+        for (var i=0; i<circles.length; i++ ) {
+            if (circles[i].getAttribute("fill") == "red") {
+            numInfected += 1;
+            }
+        }
+        if (numInfected != lastNumInfected ) {
+          console.log(steps, numInfected);
+          lastNumInfected = numInfected;
+          samples.push([steps, numInfected]);
+        }
+        if (numInfected == NUM_CIRCLES) {
+          console.log(samples);
+          return false;
+        }
+        return true;
+      }
+
+      // Handles the animation loop.
+      function update() {
+        for (var i=0; i<circles.length; i++ ) {
+          mvCircle(circles[i]);
+        }
+        if (updateStats()) {
+          requestAnimationFrame(update);
+        } else {
+          drawVisualization()
+        }
+      }
+
+      function Init(evt) {
+        // Insert all the circles onto the stage.
+        var stage = document.getElementById("stage");
+        for (var i=0; i<NUM_CIRCLES; i++) {
+          var c = document.createElementNS('http://www.w3.org/2000/svg', "circle");
+          c.setAttribute("cx", Math.random() * 200);
+          c.setAttribute("cy", Math.random() * 200);
+          c.setAttribute("r", RADIUS);
+          c.setAttribute("fill", "#FAEBD7");
+          c.setAttribute("stroke", "purple");
+          c.setAttribute("stroke-width", 2);
+          stage.appendChild(c);
+          circles.push(c);
+        }
+        circles[0].setAttribute("fill", "red");
+
+        requestAnimationFrame(update);
+      }
+
+    </script>
+     <div id="visualization" style="width: 600px; height: 400px;"></div>
+  </body>
+</html>

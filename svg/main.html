@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      p { font-size: 20px; }
+    </style>
+  </head>
+  <body onload="DocInit()">
+    <p>The shapes below are drawn with inline SVG.</p>
+    <svg id="stage" width="200" height="200"
+   onload='Init(evt)'
+   onmousedown='Grab(evt)'
+   onmousemove='Drag(evt)'
+   onmouseup='Drop(evt)'
+   style="border: solid black 1px;">
+
+      <rect id="box" x="-10" y="-15" width="20" height="30" fill="#FAEBD7" stroke="purple" stroke-width="2" />
+      <circle id="circle1" cx="100" cy="100" r="15" height="30" fill="#FAEBD7" stroke="purple" stroke-width="2" />
+      <circle id="circle2" cx="100" cy="100" r="15" height="30" fill="#FAEBD7" stroke="purple" stroke-width="2" />
+      <circle id="circle3" cx="100" cy="100" r="15" height="30" fill="#FAEBD7" stroke="purple" stroke-width="2" />
+    </svg>
+
+    <label for="deltaX">deltaX</label><input type="text" name="deltaX" value="" id="deltaX">
+    <label for="deltaY">deltaY</label><input type="text" name="deltaY" value="" id="deltaY">
+    <label for="rX">rX</label><input type="text" name="rX" value="" id="rX">
+    <label for="rY">rY</label><input type="text" name="rY" value="" id="rY">
+    <label for="hits">hits</label><input type="text" name="hits" value="" id="hits">
+    <label for="keypress">keypress</label><input type="text" name="keypress" value="" id="keypress">
+    <label for="rotAngle">rotAngle</label><input type="text" name="rotAngle" value="" id="rotAngle">
+
+    <script type="text/javascript" charset="utf-8">
+      var stage = document.getElementById("stage");
+      var box = document.getElementById("box");
+      var circle = document.getElementById("circle1");
+      var circle2 = document.getElementById("circle2");
+      var circle3 = document.getElementById("circle3");
+      var rX = document.getElementById("rX");
+      var rY = document.getElementById("rY");
+      var deltaX = document.getElementById("deltaX");
+      var deltaY = document.getElementById("deltaY");
+      var hits = document.getElementById("hits");
+
+      var keypress = document.getElementById("keypress");
+      var rotAngle = document.getElementById("rotAngle");
+
+      var TrueCoords = null;
+      var GrabPoint = null;
+      var DragTarget = null;
+      var intersectRect = null;
+      var rot = false;
+      var x = 0;
+      var y = 0;
+      var angle = 0;
+      var startAngle = 0;
+
+      function getTranslatedBBox(ele) {
+        var owner = ele.ownerSVGElement;
+        var retval = owner.createSVGRect();
+        var svgP = owner.createSVGPoint();
+
+        var r = ele.getBBox();
+        var m = ele.getCTM();
+        retval.height = r.height;
+        retval.width = r.width;
+
+        svgP.x = r.x;
+        svgP.y = r.y;
+        var newPt = svgP.matrixTransform(m);
+        retval.x = newPt.x;
+        retval.y = newPt.y;
+
+        return retval;
+      }
+
+      // Returns the elements that this ele has hit, not inlcluding itself.
+      function hitTest(ele) {
+        var owner = ele.ownerSVGElement;
+        var intersectRect = getTranslatedBBox(ele);
+        rX.value = intersectRect.x;
+        rY.value = intersectRect.y;
+        var list = owner.getIntersectionList(intersectRect);
+
+        // Remember to remove ourselves when checking for intersections.
+        var notme = [];
+        for (var i=0; i<list.length; i++) {
+          if (list[i] != ele) {
+             notme[notme.length] = list[i];
+          }
+        }
+
+        return notme;
+      }
+
+      function mvCircle(circle) {
+        var newx = circle.cx.baseVal.value + Math.floor(Math.random()*3-1);
+        var newy = circle.cy.baseVal.value + Math.floor(Math.random()*3-1);
+        if (newx > 200) { newx = 200; }
+        if (newy > 200) { newy = 200; }
+        if (newx < 0) { newx = 0; }
+        if (newy < 0) { newy = 0; }
+        circle.setAttribute('cx', newx);
+        circle.setAttribute('cy', newy);
+
+        hits.value = hitTest(box).length;
+      }
+
+      function update() {
+        requestAnimationFrame(update);
+        mvCircle(circle);
+        mvCircle(circle2);
+        mvCircle(circle3);
+      }
+
+
+
+      function DocInit() {
+        document.onkeydown = function(evt) {
+          // alpha keys always return the ASCII code for the upper case character.
+          if ('R' == String.fromCharCode(evt.keyCode)) {
+            rot = true;
+          }
+          keypress.value = rot;
+        }
+        document.onkeyup = function(evt) {
+          // alpha keys always return the ASCII code for the upper case character.
+          if ('R' == String.fromCharCode(evt.keyCode)) {
+            rot = false;
+          }
+          keypress.value = rot;
+        }
+        requestAnimationFrame(update);
+      }
+
+
+      function Init(evt) {
+         TrueCoords = stage.createSVGPoint();
+         GrabPoint = stage.createSVGPoint();
+         StartPoint = stage.createSVGPoint();
+         intersectRect = stage.createSVGRect();
+      }
+
+
+      function Grab(evt) {
+         // find out which element we moused down on
+         var targetElement = evt.target;
+         if (box != targetElement) {
+          return;
+         }
+
+         // account for zooming and panning
+         GetTrueCoords(evt);
+
+         //set the item moused down on as the element to be dragged
+         DragTarget = targetElement;
+
+         // turn off all pointer events to the dragged element, this does 2 things:
+         //    1) allows us to drag text elements without selecting the text
+         //    2) allows us to find out where the dragged element is dropped (see Drop)
+         DragTarget.setAttribute('pointer-events', 'none');
+         StartPoint.x = x;
+         StartPoint.y = y;
+         startAngle = angle;
+
+         // we need to find the current position and translation of the grabbed element,
+         //    so that we only apply the differential between the current location
+         //    and the new location
+         GrabPoint.x = TrueCoords.x;
+         GrabPoint.y = TrueCoords.y;
+      };
+
+      function Drag(evt) {
+         // if we don't currently have an element in tow, don't do anything
+         if (DragTarget)
+         {
+           // account for zooming and panning
+           GetTrueCoords(evt);
+            // account for the offset between the element's origin and the
+            //    exact place we grabbed it... this way, the drag will look more natural
+           deltaX.value = TrueCoords.x - GrabPoint.x;
+           deltaY.value = TrueCoords.y - GrabPoint.y;
+           var newX = x;
+           var newY = y;
+           if (rot == false) {
+             newX = StartPoint.x + TrueCoords.x - GrabPoint.x;
+             newY = StartPoint.y + TrueCoords.y - GrabPoint.y;
+           } else {
+             var dx = (TrueCoords.x - GrabPoint.x)
+             angle = startAngle + 360.0 * Math.atan((TrueCoords.y - GrabPoint.y)/dx)/(Math.PI*2.0);
+             if (dx < 0) {
+              angle = 180 + angle;
+             }
+             rotAngle.value = angle;
+           }
+
+           // apply a new tranform translation to the dragged element, to display
+           //    it in its new location
+           DragTarget.setAttribute('transform', 'translate(' + newX + ',' + newY + ') rotate(' + angle + ')');
+         }
+      };
+
+      function Drop(evt) {
+         // if we aren't currently dragging an element, don't do anything
+         if ( DragTarget )
+         {
+            // since the element currently being dragged has its pointer-events turned off,
+            //    we are afforded the opportunity to find out the element it's being dropped on
+            var targetElement = evt.target;
+
+            // turn the pointer-events back on, so we can grab this item later
+            DragTarget.setAttributeNS(null, 'pointer-events', 'all');
+
+            // Record the spot we stopped at.
+            GetTrueCoords(evt);
+            if (rot == false) {
+              x = StartPoint.x + TrueCoords.x - GrabPoint.x;
+              y = StartPoint.y + TrueCoords.y - GrabPoint.y;
+            } else {
+              var dx = (TrueCoords.x - GrabPoint.x)
+                angle = startAngle + 360.0 * Math.atan((TrueCoords.y - GrabPoint.y)/dx)/(Math.PI*2.0);
+              if (dx < 0) {
+                angle = 180 + angle;
+              }
+              //angle = startAngle + angle;
+            }
+
+            // set the global variable to null, so nothing will be dragged until we
+            //    grab the next element
+            DragTarget = null;
+         }
+      };
+
+      function GetTrueCoords(evt) {
+         // find the current zoom level and pan setting, and adjust the reported
+         //    mouse position accordingly
+         var newScale = stage.currentScale;
+         TrueCoords.x = (evt.offsetX)/newScale;
+         TrueCoords.y = (evt.offsetY)/newScale;
+      };
+
+    </script>
+  </body>
+</html>
